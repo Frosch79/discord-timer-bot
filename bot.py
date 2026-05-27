@@ -7,7 +7,7 @@ import os
 # ===== TOKEN =====
 TOKEN = os.getenv("TOKEN")
 
-# ===== INTENTS（安定版）=====
+# ===== INTENTS =====
 intents = discord.Intents.default()
 
 class MyClient(discord.Client):
@@ -15,20 +15,23 @@ class MyClient(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
-        # クールダウン管理
+        # クールダウン保存
         self.user_last = {}
 
     async def setup_hook(self):
-        # Renderでも安定する同期方法
-        await self.tree.sync()
-        print("コマンド同期完了")
+        # once sync
+        try:
+            await self.tree.sync()
+            print("コマンド同期完了")
+        except Exception as e:
+            print("sync error:", e)
 
     async def on_ready(self):
         print(f"ログイン完了: {self.user}")
 
 client = MyClient()
 
-# ===== クールダウン設定 =====
+# ===== クールダウン =====
 COOLDOWNS = {
     "all": 10 * 60,
     "semi_heist": 30 * 60,
@@ -84,7 +87,7 @@ async def timer(interaction: discord.Interaction, minutes: int, message: str = "
 
 
 # ===== CRIME =====
-@client.tree.command(name="crime", description="犯罪コマンド（クールダウン付き）")
+@client.tree.command(name="crime", description="クールダウン付き犯罪コマンド")
 @app_commands.describe(type="all / semi_heist / heist")
 async def crime(interaction: discord.Interaction, type: str):
 
