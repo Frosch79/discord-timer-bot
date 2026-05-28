@@ -5,25 +5,17 @@ import asyncio
 import time
 import os
 
-# ===== TOKEN =====
-#for local
 load_dotenv()
-
-#for deploy
 TOKEN = os.getenv("TOKEN")
 
-
-# ===== INTENTS =====
 intents = discord.Intents.default()
 
 class MyClient(discord.Client):
     def __init__(self):
-        intents = discord.Intents.default()
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        # ここは1回だけ実行される安全な場所
         await self.tree.sync()
 
     async def on_ready(self):
@@ -31,84 +23,143 @@ class MyClient(discord.Client):
 
 client = MyClient()
 
-# ===== クールダウン =====
-COOLDOWNS = {
-    "all": 10 * 60,
-    "semi_heist": 30 * 60,
-    "heist": 4 * 60 * 60
-}
+# =====================
+# DATA
+# =====================
+user_timers = {}
+guild_config = {}  # ★重要
 
-def can_use(user_last, user_id, category):
-    now = time.time()
+CRIMES = [
+    "パレト","輸送機","ボブキャ","ナイト","軍事","飛行場",
+    "オイルリグ","客船","ヒューメイン","アーティファクト","ユニオン","パシフィック"
+]
 
-    if user_id not in user_last:
-        return True, None
+# =====================
+# ROLE SET
+# =====================
+@client.tree.command(name="set_crime_role")
+@app_commands.describe(role="通知用ロール")
+async def set_crime_role(interaction: discord.Interaction, role: discord.Role):
 
-    last = user_last[user_id]
+    guild_config[interaction.guild.id] = role.id
 
-    # 全体クールダウン
-    if now - last.get("all", 0) < COOLDOWNS["all"]:
-        return False, COOLDOWNS["all"] - (now - last["all"])
-
-    # 個別クールダウン
-    if category in last:
-        wait = COOLDOWNS.get(category, 0)
-        if now - last[category] < wait:
-            return False, wait - (now - last[category])
-
-    return True, None
-
-def set_use(user_last, user_id, category):
-    now = time.time()
-
-    if user_id not in user_last:
-        user_last[user_id] = {}
-
-    user_last[user_id]["all"] = now
-    user_last[user_id][category] = now
-
-
-# ===== TIMER =====
-@client.tree.command(name="timer", description="分単位タイマー")
-@app_commands.describe(minutes="分", message="終了メッセージ")
-async def timer(interaction: discord.Interaction, minutes: int, message: str = "時間です！"):
-
-    if minutes <= 0:
-        await interaction.response.send_message("1分以上にしてください")
-        return
-
-    await interaction.response.send_message(f"{minutes}分タイマー開始")
-
-    await asyncio.sleep(minutes * 60)
-
-    await interaction.channel.send(
-        f"{interaction.user.mention} ⏰ {message}"
+    await interaction.response.send_message(
+        f"✅ 設定完了: {role.name}"
     )
 
+# =====================
+# TIMER SET
+# =====================
+@client.tree.command(name="crime_set", description="クールタイマー登録")
+@app_commands.describe(
+    crime="犯罪名",
+    minutes="残り時間（分）"
+)
+@app_commands.choices(crime=[
+    app_commands.Choice(name=c, value=c) for c in CRIMES
+])
+async def crime_set(interaction: discord.Interaction, crime: app_commands.Choice[str], minutes: int):
 
-# ===== CRIME =====
-@client.tree.command(name="crime", description="クールダウン付き犯罪コマンド")
-@app_commands.describe(type="all / semi_heist / heist")
-async def crime(interaction: discord.Interaction, type: str):
+    uid = interaction.user.id
+    end_time = time.time() + minutes * 60
 
-    if type not in COOLDOWNS:
-        await interaction.response.send_message("❌ 無効なタイプです")
+    if uid not in user_timers:
+        user_timers[uid] = []
+
+    user_timers[uid].append({
+        "crime": crime.value,
+        "end": end_time,
+        "notified": set(),
+        "channel_id": interaction.channel.id,
+        "created": time.time()
+    })
+
+    await interaction.response.send_message(
+        f"🟢 {crime.value} 登録完了（{minutes}分）"
+    )
+
+# =====================
+# STATUS
+# =====================
+@client.tree.command(name="crime_status")
+async def crime_status(interaction: discord.Interaction):
+
+    now = time.time()
+    uid = interaction.user.id
+
+    if uid not in user_timers:
+        await interaction.response.send_message("データなし")
         return
 
-    ok, wait = can_use(client.user_last, interaction.user.id, type)
+    msg = "📊 クールタイム一覧\n\n"
 
-    if not ok:
-        await interaction.response.send_message(
-            f"⛔ クールダウン中: あと {int(wait//60)}分"
-        )
-        return
+    for t in user_timers[uid]:
+        remaining = t["end"] - now
 
-    set_use(client.user_last, interaction.user.id, type)
+        if remaining <= 0:
+            msg += f"{t['crime']}: ✅ 解禁\n"
+        else:
+            msg += f"{t['crime']}: ⛔ {int(remaining//60)}分\n"
 
-    await interaction.response.send_message("✅ 犯罪成功（仮）")
+    await interaction.response.send_message(msg)
 
+# =====================
+# LOOP
+# =====================
+async def timer_loop():
+    await client.wait_until_ready()
 
-# ===== RUN =====
-print("ALL ENV KEYS:", list(os.environ.keys()))
-print("TOKEN RAW:", os.getenv("TOKEN"))
+    while not client.is_closed():
+        now = time.time()
+
+        for uid, timers in list(user_timers.items()):
+            for t in timers:
+
+                channel = client.get_channel(t["channel_id"])
+                if not channel:
+                    continue
+
+                guild_id = channel.guild.id
+                role_id = guild_config.get(guild_id)
+
+                if not role_id:
+                    continue
+
+                remaining = t["end"] - now
+                last = t.get("last_remaining")
+                t["last_remaining"] = remaining
+
+                if last is None:
+                    continue
+
+                def crossed(a, b, target):
+                    return a > target and b <= target
+
+                if crossed(last, remaining, 30*60) and "30" not in t["notified"]:
+                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 30分前")
+                    t["notified"].add("30")
+
+                if crossed(last, remaining, 15*60) and "15" not in t["notified"]:
+                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 15分前")
+                    t["notified"].add("15")
+
+                if crossed(last, remaining, 10*60) and "10" not in t["notified"]:
+                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 10分前")
+                    t["notified"].add("10")
+
+                if crossed(last, remaining, 5*60) and "5" not in t["notified"]:
+                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 5分前")
+                    t["notified"].add("5")
+
+                if remaining <= 0 and "end" not in t["notified"]:
+                    await channel.send(f"<@&{role_id}> ✅ {t['crime']} 解禁！")
+                    t["notified"].add("end")
+
+        await asyncio.sleep(10)
+
+@client.event
+async def on_ready():
+    client.loop.create_task(timer_loop())
+    print(f"READY: {client.user}")
+
 client.run(TOKEN)
