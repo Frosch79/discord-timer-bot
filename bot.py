@@ -1,30 +1,30 @@
 import discord
 from discord import app_commands
+from dotenv import load_dotenv
 import asyncio
 import time
 import os
 
 # ===== TOKEN =====
+#for local
+load_dotenv()
+
+#for deploy
 TOKEN = os.getenv("TOKEN")
+
 
 # ===== INTENTS =====
 intents = discord.Intents.default()
 
 class MyClient(discord.Client):
     def __init__(self):
+        intents = discord.Intents.default()
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
-        # クールダウン保存
-        self.user_last = {}
-
     async def setup_hook(self):
-        # once sync
-        try:
-            await self.tree.sync()
-            print("コマンド同期完了")
-        except Exception as e:
-            print("sync error:", e)
+        # ここは1回だけ実行される安全な場所
+        await self.tree.sync()
 
     async def on_ready(self):
         print(f"ログイン完了: {self.user}")
