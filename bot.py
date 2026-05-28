@@ -69,7 +69,7 @@ async def set_crime_role(interaction: discord.Interaction, role: discord.Role):
 # =====================
 # TIMER SET
 # =====================
-@client.tree.command(name="crime_se", description="クールタイマー登録")
+@client.tree.command(name="crime_set", description="クールタイマー登録")
 @app_commands.describe(
     crime="犯罪名",
     minutes="残り時間（分）"
