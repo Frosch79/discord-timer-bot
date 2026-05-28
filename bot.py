@@ -109,4 +109,6 @@ async def crime(interaction: discord.Interaction, type: str):
 
 
 # ===== RUN =====
+print("ALL ENV KEYS:", list(os.environ.keys()))
+print("TOKEN RAW:", os.getenv("TOKEN"))
 client.run(TOKEN)
