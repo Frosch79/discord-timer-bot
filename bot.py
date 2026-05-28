@@ -16,10 +16,19 @@ class MyClient(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
+        # global sync
         await self.tree.sync()
 
     async def on_ready(self):
         print(f"ログイン完了: {self.user}")
+
+        # guild sync
+        for guild in self.guilds:
+            try:
+                await self.tree.sync(guild=guild)
+                print(f"synced: {guild.name}")
+            except Exception as e:
+                print(f"sync failed: {guild.name} / {e}")
 
 client = MyClient()
 
@@ -30,8 +39,18 @@ user_timers = {}
 guild_config = {}  # ★重要
 
 CRIMES = [
-    "パレト","輸送機","ボブキャ","ナイト","軍事","飛行場",
-    "オイルリグ","客船","ヒューメイン","アーティファクト","ユニオン","パシフィック"
+    "パレト",
+    "輸送機",
+    "ボブキャ",
+    "ナイト",
+    "軍事",
+    "飛行場",
+    "オイルリグ",
+    "客船",
+    "ヒューメイン",
+    "アーティファクト",
+    "ユニオン",
+    "パシフィック"
 ]
 
 # =====================
@@ -50,7 +69,7 @@ async def set_crime_role(interaction: discord.Interaction, role: discord.Role):
 # =====================
 # TIMER SET
 # =====================
-@client.tree.command(name="crime_set", description="クールタイマー登録")
+@client.tree.command(name="crime_se", description="クールタイマー登録")
 @app_commands.describe(
     crime="犯罪名",
     minutes="残り時間（分）"
