@@ -16,10 +16,15 @@ class MyClient(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
+
         # global sync
         await self.tree.sync()
 
+        # timer loop
+        self.bg_task = asyncio.create_task(timer_loop())
+
     async def on_ready(self):
+
         print(f"ログイン完了: {self.user}")
 
         # guild sync
@@ -27,6 +32,7 @@ class MyClient(discord.Client):
             try:
                 await self.tree.sync(guild=guild)
                 print(f"synced: {guild.name}")
+
             except Exception as e:
                 print(f"sync failed: {guild.name} / {e}")
 
@@ -36,7 +42,7 @@ client = MyClient()
 # DATA
 # =====================
 guild_timers = {}
-guild_config = {}  # ★重要
+guild_config = {}
 
 CRIMES = [
     "パレト",
@@ -77,13 +83,22 @@ async def set_crime_role(interaction: discord.Interaction, role: discord.Role):
 @app_commands.choices(crime=[
     app_commands.Choice(name=c, value=c) for c in CRIMES
 ])
-async def crime_set(interaction: discord.Interaction, crime: app_commands.Choice[str], minutes: int):
+async def crime_set(interaction: discord.Interaction,
+                     crime: app_commands.Choice[str],
+                       minutes: int):
+
+    await interaction.response.defer()
 
     guild_id = interaction.guild.id
     end_time = time.time() + minutes * 60
 
     if guild_id not in guild_timers:
         guild_timers[guild_id] = []
+
+    guild_timers[guild_id] = [
+    t for t in guild_timers[guild_id]
+    if t["crime"] != crime.value
+]
 
     guild_timers[guild_id].append({
         "crime": crime.value,
@@ -93,7 +108,7 @@ async def crime_set(interaction: discord.Interaction, crime: app_commands.Choice
         "created": time.time()
     })
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"🟢 {crime.value} 登録完了（{minutes}分）"
     )
 
@@ -175,7 +190,6 @@ async def timer_loop():
                     t["notified"].add("end")
                     timers.remove(t)
 
-                    continue
 
         await asyncio.sleep(10)
 
