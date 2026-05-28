@@ -144,52 +144,60 @@ async def timer_loop():
     await client.wait_until_ready()
 
     while not client.is_closed():
-        now = time.time()
+        try:
+            now = time.time()
 
-        for guild_id, timers in list(guild_timers.items()):
-            for t in timers:
+            for guild_id, timers in list(guild_timers.items()):
+                to_remove = []
 
-                channel = client.get_channel(t["channel_id"])
-                if not channel:
-                    continue
+                for t in timers:
+                    channel = client.get_channel(t["channel_id"])
+                    if not channel:
+                        continue
 
-                guild_id = channel.guild.id
-                role_id = guild_config.get(guild_id)
+                    role_id = guild_config.get(channel.guild.id)
+                    if not role_id:
+                        continue
 
-                if not role_id:
-                    continue
+                    remaining = t["end"] - now
+                    last = t.get("last_remaining")
+                    t["last_remaining"] = remaining
 
-                remaining = t["end"] - now
-                last = t.get("last_remaining")
-                t["last_remaining"] = remaining
+                    if last is None:
+                        continue
 
-                if last is None:
-                    continue
+                    def crossed(a, b, target):
+                        return a > target and b <= target
 
-                def crossed(a, b, target):
-                    return a > target and b <= target
+                    if crossed(last, remaining, 30*60) and "30" not in t["notified"]:
+                        await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 30分前")
+                        t["notified"].add("30")
 
-                if crossed(last, remaining, 30*60) and "30" not in t["notified"]:
-                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 30分前")
-                    t["notified"].add("30")
+                    if crossed(last, remaining, 15*60) and "15" not in t["notified"]:
+                        await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 15分前")
+                        t["notified"].add("15")
 
-                if crossed(last, remaining, 15*60) and "15" not in t["notified"]:
-                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 15分前")
-                    t["notified"].add("15")
+                    if crossed(last, remaining, 10*60) and "10" not in t["notified"]:
+                        await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 10分前")
+                        t["notified"].add("10")
 
-                if crossed(last, remaining, 10*60) and "10" not in t["notified"]:
-                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 10分前")
-                    t["notified"].add("10")
+                    if crossed(last, remaining, 5*60) and "5" not in t["notified"]:
+                        await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 5分前")
+                        t["notified"].add("5")
 
-                if crossed(last, remaining, 5*60) and "5" not in t["notified"]:
-                    await channel.send(f"<@&{role_id}> ⚠ {t['crime']} 5分前")
-                    t["notified"].add("5")
+                    if remaining <= 0 and "end" not in t["notified"]:
+                        await channel.send(f"<@&{role_id}> ✅ {t['crime']} 解禁！")
+                        t["notified"].add("end")
 
-                if remaining <= 0 and "end" not in t["notified"]:
-                    await channel.send(f"<@&{role_id}> ✅ {t['crime']} 解禁！")
-                    t["notified"].add("end")
-                    timers.remove(t)
+                        to_remove.append(t)
 
+                # remove outer loop
+                for t in to_remove:
+                    if t in timers:
+                        timers.remove(t)
+
+        except Exception as e:
+            print("timer_loop error:", e)
 
         await asyncio.sleep(10)
 
