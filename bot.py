@@ -35,7 +35,7 @@ client = MyClient()
 # =====================
 # DATA
 # =====================
-user_timers = {}
+guild_timers = {}
 guild_config = {}  # ★重要
 
 CRIMES = [
@@ -79,13 +79,13 @@ async def set_crime_role(interaction: discord.Interaction, role: discord.Role):
 ])
 async def crime_set(interaction: discord.Interaction, crime: app_commands.Choice[str], minutes: int):
 
-    uid = interaction.user.id
+    guild_id = interaction.guild.id
     end_time = time.time() + minutes * 60
 
-    if uid not in user_timers:
-        user_timers[uid] = []
+    if guild_id not in guild_timers:
+        guild_timers[guild_id] = []
 
-    user_timers[uid].append({
+    guild_timers[guild_id].append({
         "crime": crime.value,
         "end": end_time,
         "notified": set(),
@@ -104,19 +104,19 @@ async def crime_set(interaction: discord.Interaction, crime: app_commands.Choice
 async def crime_status(interaction: discord.Interaction):
 
     now = time.time()
-    uid = interaction.user.id
+    guild_id = interaction.guild.id
 
-    if uid not in user_timers:
+    if guild_id not in guild_timers:
         await interaction.response.send_message("データなし")
         return
 
     msg = "📊 クールタイム一覧\n\n"
 
-    for t in user_timers[uid]:
+    for t in guild_timers[guild_id]:
         remaining = t["end"] - now
 
         if remaining <= 0:
-            msg += f"{t['crime']}: ✅ 解禁\n"
+            continue
         else:
             msg += f"{t['crime']}: ⛔ {int(remaining//60)}分\n"
 
@@ -131,7 +131,7 @@ async def timer_loop():
     while not client.is_closed():
         now = time.time()
 
-        for uid, timers in list(user_timers.items()):
+        for guild_id, timers in list(guild_timers.items()):
             for t in timers:
 
                 channel = client.get_channel(t["channel_id"])
@@ -173,6 +173,9 @@ async def timer_loop():
                 if remaining <= 0 and "end" not in t["notified"]:
                     await channel.send(f"<@&{role_id}> ✅ {t['crime']} 解禁！")
                     t["notified"].add("end")
+                    timers.remove(t)
+
+                    continue
 
         await asyncio.sleep(10)
 
