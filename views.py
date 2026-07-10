@@ -108,6 +108,9 @@ class CooldownModal(Modal):
 
     async def on_submit(self, interaction):
 
+
+        await interaction.response.defer()
+
         scene=parse_time(
             self.scene_end.value
         )
@@ -264,7 +267,7 @@ class CooldownModal(Modal):
         )
 
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=embed
         )
 
