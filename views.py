@@ -170,8 +170,7 @@ class CooldownModal(Modal):
             },
 
 
-            "channel":
-            interaction.channel.id
+
 
         })
 

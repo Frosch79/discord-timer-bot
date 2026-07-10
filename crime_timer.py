@@ -1,6 +1,8 @@
 import asyncio
-import time
+from datetime import timedelta
 import discord
+
+from utils import now_jst
 
 
 async def normal_timer_loop(client):
@@ -11,98 +13,54 @@ async def normal_timer_loop(client):
 
         try:
 
-            now = time.time()
+            now = now_jst()
 
-
-            for guild_id, timers in list(
-                client.guild_timers.items()
-            ):
+            for guild_id, timers in list(client.guild_timers.items()):
 
                 remove = []
 
+                # config取得（ここが分離対応ポイント）
+                cfg = client.guild_config.get(guild_id, {})
+                channel_id = cfg.get("channels", {}).get("crime")
+
+                if not channel_id:
+                    continue
+
+                channel = client.get_channel(channel_id)
+                if not channel:
+                    continue
+
+                role_id = cfg.get("role_id")
+
+                mention = f"<@&{role_id}> " if role_id else ""
 
                 for t in timers:
 
-
-                    channel = client.get_channel(
-                        t["channel_id"]
-                    )
-
-                    if not channel:
-                        continue
-
-
-
-                    role_id = client.guild_config.get(
-                        guild_id
-                    )
-
-
-                    mention = ""
-
-                    if role_id:
-                        mention = f"<@&{role_id}> "
-
-
-
                     remaining = t["end"] - now
-
-
 
                     # 登録直後防止
                     if "last_remaining" not in t:
-
                         t["last_remaining"] = remaining
                         continue
 
-
-
                     last = t["last_remaining"]
-
-
                     t["last_remaining"] = remaining
 
-
-
-                    def crossed(
-                        before,
-                        after,
-                        target
-                    ):
-
-                        return (
-                            before > target
-                            and after <= target
-                        )
-
-
+                    def crossed(before, after, target):
+                        return before > target and after <= target
 
                     checks = [
-
-                        ("30", 30*60, "30分前"),
-
-                        ("15", 15*60, "15分前"),
-
-                        ("10", 10*60, "10分前"),
-
-                        ("5", 5*60, "5分前"),
-
+                        ("30", timedelta(minutes=30), "30分前"),
+                        ("15", timedelta(minutes=15), "15分前"),
+                        ("10", timedelta(minutes=10), "10分前"),
+                        ("5", timedelta(minutes=5), "5分前"),
                     ]
-
-
 
                     for key, sec, text in checks:
 
-
-                        if crossed(
-                            last,
-                            remaining,
-                            sec
-                        ):
-
+                        if crossed(last, remaining, sec):
 
                             if key not in t["notified"]:
-
 
                                 embed = discord.Embed(
                                     title="⚠ 犯罪タイマー通知",
@@ -121,25 +79,25 @@ async def normal_timer_loop(client):
                                     inline=True
                                 )
 
+                                unlock_time = t["end"].strftime("%H:%M")
+
+                                embed.add_field(
+                                    name="🕒 解禁時間",
+                                    value=unlock_time,
+                                    inline=True
+                                )
+
                                 await channel.send(
                                     content=mention,
                                     embed=embed
                                 )
 
-
                                 t["notified"].add(key)
 
-
-
-
-
-                    # 解禁
-
-                    if remaining <= 0:
-
+                    # 解禁処理
+                    if remaining <= timedelta(0):
 
                         if "end" not in t["notified"]:
-
 
                             embed = discord.Embed(
                                 title="✅ 犯罪タイマー解禁",
@@ -163,34 +121,15 @@ async def normal_timer_loop(client):
                                 embed=embed
                             )
 
-
-                            t["notified"].add(
-                                "end"
-                            )
-
-
+                            t["notified"].add("end")
 
                         remove.append(t)
 
-
-
-
-
                 for t in remove:
-
                     if t in timers:
                         timers.remove(t)
 
-
-
-
         except Exception as e:
-
-            print(
-                "crime_timer error:",
-                e
-            )
-
-
+            print("crime_timer error:", e)
 
         await asyncio.sleep(10)
